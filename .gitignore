@@ -1,0 +1,4 @@
+echo "*.o" >> .gitignore
+echo "nozzle_exec" >> .gitignore
+echo "hhl_exec" >> .gitignore
+echo ".vscode/" >> .gitignore
