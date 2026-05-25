@@ -1,4 +1,8 @@
 #include "nozzle_qns/quantum_ode_solver.hpp"
+/**
+ * @file quantum_ode_solver.cpp
+ * @brief Implements the outer-loop nozzle ODE solver.
+ */
 
 #include <algorithm>
 #include <cmath>
@@ -6,6 +10,9 @@
 
 namespace nozzle_qns {
 
+/**
+ * @brief Constructs the ODE solver and validates time-stepping settings.
+ */
 QuantumODESolver::QuantumODESolver(OneIntervalStepper stepper)
     : stepper_(std::move(stepper)) {
     const auto& cfg = stepper_.config();
@@ -14,8 +21,11 @@ QuantumODESolver::QuantumODESolver(OneIntervalStepper stepper)
     ensure(cfg.tp.Tfinal > 0.0, "QuantumODESolver: tp.Tfinal must be > 0");
 }
 
+/**
+ * @brief Advances the initial state over all configured outer intervals.
+ */
 Solution QuantumODESolver::solve(std::vector<UVec> U0) {
-    // Basic sanity
+    /// Basic sanity check.
     if (U0.empty())
         throw std::runtime_error("QuantumODESolver::solve: empty initial state");
 
@@ -41,7 +51,7 @@ Solution QuantumODESolver::solve(std::vector<UVec> U0) {
 
     update_max_abs(sol.U_final);
 
-    // Outer time stepping: n intervals
+    /// Outer time stepping over n intervals.
     for (idx i = 0; i < cfg.tp.n; ++i) {
         stepper_.advance_one_interval(sol.U_final);
 

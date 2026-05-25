@@ -1,10 +1,18 @@
 # include "nozzle_qns/interval_stepper.hpp"
+/**
+ * @file interval_stepper.cpp
+ * @brief Implements nested one-interval stepping for the nozzle ODE solver.
+ */
+
 #include <algorithm>
 #include <cmath>
 #include <utility>
 
 namespace nozzle_qns {
 
+    /**
+     * @brief Returns n^(k - 1).
+     */
     idx TimePartition::Nk() const {
         if (n == 0 || k == 0) return 0;
         idx r = 1;
@@ -12,16 +20,25 @@ namespace nozzle_qns {
         return r;
     }
 
+    /**
+     * @brief Returns the outer interval length T / n.
+     */
     double TimePartition::h() const {
         return n > 0 ? Tfinal / n : 0.0;
     }
 
+    /**
+     * @brief Returns the sub-subinterval length T / n^k.
+     */
     double TimePartition::hbar() const {
         idx Nk_ = Nk();
         return (n > 0 && Nk_ > 0) ? (Tfinal / (static_cast<double>(n) * static_cast<double>(Nk_))) : 0.0;
     }
 
 
+    /**
+     * @brief Constructs the one-interval stepper.
+     */
     OneIntervalStepper::OneIntervalStepper(StepperConfig cfg,
                                         Quasi1DInviscidDriver driver,
                                         BoundaryApplier bc,
@@ -33,8 +50,11 @@ namespace nozzle_qns {
           mean_integrals_(std::move(mean_integrals)),
           knots_(knot_policy) {}
     
+    /**
+     * @brief Advances U across one outer interval with sampled mean derivatives.
+     */
     void OneIntervalStepper::advance_one_interval(std::vector<UVec>& U) const {
-        // --- Basic checks ---
+        /// Basic checks.
         ensure(cfg_.tp.n >= 2, "OneIntervalStepper: tp.n must be >= 2");
         ensure(cfg_.tp.k >= 1, "OneIntervalStepper: tp.k must be >= 1");
         ensure(cfg_.tp.Tfinal > 0.0, "OneIntervalStepper: tp.Tfinal must be > 0");
@@ -45,7 +65,7 @@ namespace nozzle_qns {
         const idx Nk = cfg_.tp.Nk();
         const double hbar = cfg_.tp.hbar();
 
-        // Knot points u in [0,1]
+        /// Knot points u in [0, 1].
         const KnotGrid kg = knots_.make_knots(cfg_.knots_per_subsub);
         ensure(!kg.u.empty(), "OneIntervalStepper: knot grid is empty");
 
@@ -55,19 +75,18 @@ namespace nozzle_qns {
         const double delta_per_call =
             cfg_.delta / std::max(1.0, total_calls);
 
-        // Main loop over sub-subintervals
+        /// Main loop over sub-subintervals.
         for (idx l = 0; l < Nk; ++l) {
-            // Enforce boundary conditions on current state
+            /// Enforce boundary conditions on current state.
             bc_.apply(U);
 
-            // Save starting state for this sub-subinterval
+            /// Save starting state for this sub-subinterval.
             const std::vector<UVec> U_start = U;
 
-            // 1st-order Taylor base derivative at sub-subinterval start:
-            // f0 = f(U_start)
+            /// First-order Taylor base derivative f0 = f(U_start).
             const std::vector<UVec> f0 = driver_.dUdt_all(U_start);
 
-            // Storage: for each grid point j, collect knot samples of each component of f
+            /// Storage for knot samples of each derivative component at each grid point.
             std::vector<std::vector<double>> f1_knots(m), f2_knots(m), f3_knots(m);
             for (idx j = 0; j < m; ++j) {
                 f1_knots[j].reserve(kg.u.size());
@@ -75,15 +94,14 @@ namespace nozzle_qns {
                 f3_knots[j].reserve(kg.u.size());
             }
 
-            // Evaluate f(U_approx(u)) at each knot
+            /// Evaluate f(U_approx(u)) at each knot.
             for (double u : kg.u) {
-                // --- Build Taylor-approximated state at this knot ---
-                // Paper local model: l_i,l(j,u). Here: first-order Taylor in time.
+                /// Build the Taylor-approximated state at this knot.
                 std::vector<UVec> U_knot = U_start;
 
                 const double tau = u * hbar;
 
-                // r=1 Taylor: U_knot = U_start + tau * f0
+                /// r = 1 Taylor: U_knot = U_start + tau * f0.
                 for (idx j = 0; j < m; ++j) {
                     U_knot[j].U1 += tau * f0[j].U1;
                     U_knot[j].U2 += tau * f0[j].U2;
@@ -92,10 +110,10 @@ namespace nozzle_qns {
 
                 bc_.apply(U_knot);
 
-                // Evaluate f at this knot
+                /// Evaluate f at this knot.
                 const std::vector<UVec> f_knot = driver_.dUdt_all(U_knot);
 
-                // Store knot samples per grid point and component
+                /// Store knot samples per grid point and component.
                 for (idx j = 0; j < m; ++j) {
                     f1_knots[j].push_back(f_knot[j].U1);
                     f2_knots[j].push_back(f_knot[j].U2);
@@ -103,8 +121,8 @@ namespace nozzle_qns {
                 }
             }
 
-            // Compute mean(f) at each grid point using MeanIntegralComputer (backend inside)
-            std::vector<UVec> mean_f(m); // boundaries remain 0; interior computed
+            /// Compute mean(f) at each grid point using the configured backend.
+            std::vector<UVec> mean_f(m); ///< Boundaries remain 0; interior entries are computed.
 
             for (idx j = 1; j + 1 < m; ++j) {
                 const IntegralEstimate est =
@@ -117,7 +135,7 @@ namespace nozzle_qns {
                 mean_f[j].U3 = est.mean_f3;
             }
 
-            // Update: U_end = U_start + hbar * mean_f
+            /// Update: U_end = U_start + hbar * mean_f.
             U = U_start;
             for (idx j = 1; j + 1 < m; ++j) {
                 U[j].U1 += hbar * mean_f[j].U1;
@@ -125,7 +143,7 @@ namespace nozzle_qns {
                 U[j].U3 += hbar * mean_f[j].U3;
             }
 
-            // Enforce boundaries after update (optional but usually a good idea)
+            /// Enforce boundaries after update.
             bc_.apply(U);
         }
     }

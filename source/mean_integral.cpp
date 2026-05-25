@@ -1,4 +1,8 @@
 #include "nozzle_qns/mean_integral.hpp"
+/**
+ * @file mean_integral.cpp
+ * @brief Implements normalization and backend mean estimation for derivative samples.
+ */
 
 #include <algorithm> 
 #include <stdexcept>
@@ -7,12 +11,18 @@
 
 namespace nozzle_qns {
 
+    /**
+     * @brief Clamps a scalar into [0, 1].
+     */
     static inline double clamp01(double x) {
         if (x < 0.0) return 0.0;
         if (x > 1.0) return 1.0;
         return x;
     }
 
+    /**
+     * @brief Estimates raw derivative means from knot samples.
+     */
     IntegralEstimate MeanIntegralComputer::estimate_mean_f_from_knots(
         const std::vector<double>& f1_knots,
         const std::vector<double>& f2_knots,
@@ -28,7 +38,7 @@ namespace nozzle_qns {
 
         IntegralEstimate result;
 
-        // 1. min/max per component
+        /// Step 1: compute min/max values for each component.
         result.f1_min = *std::min_element(f1_knots.begin(), f1_knots.end());
         result.f1_max = *std::max_element(f1_knots.begin(), f1_knots.end());
         result.f2_min = *std::min_element(f2_knots.begin(), f2_knots.end());
@@ -55,19 +65,19 @@ namespace nozzle_qns {
             g3[i] = c3 ? 0.0 : clamp01((f3_knots[i] - result.f3_min) / df3);
         }
 
-        // 2. backend mean estimate (only needed if at least one component is non-constant)
+        /// Step 2: call the backend only when at least one component is non-constant.
         if (!c1 || !c2 || !c3) {
             result.mean_diag = backend_.estimate_mean(g1, g2, g3, eps_target, delta_target);
         } else {
             result.mean_diag = MeanEstimate{0.0, 0.0, 0.0, eps_target, 1.0};
         }
 
-        // 3. rescale back
+        /// Step 3: rescale normalized means back to the original derivative range.
         result.mean_f1 = c1 ? result.f1_min : (result.f1_min + df1 * result.mean_diag.G1);
         result.mean_f2 = c2 ? result.f2_min : (result.f2_min + df2 * result.mean_diag.G2);
         result.mean_f3 = c3 ? result.f3_min : (result.f3_min + df3 * result.mean_diag.G3);
 
-        // Ensure finite
+        /// Ensure the result is finite before returning.
         if (!std::isfinite(result.mean_f1) || !std::isfinite(result.mean_f2) || !std::isfinite(result.mean_f3))
             throw std::runtime_error("MeanIntegralComputer: produced non-finite mean_f");
 

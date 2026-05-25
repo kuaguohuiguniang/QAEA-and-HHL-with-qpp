@@ -1,14 +1,19 @@
 #include "HHLSolver.hpp"
 #include "HHLinput.hpp"
 
-// Example usage of HHLSolver
+/**
+ * @brief Runs the example HHL solve using the bundled linear-system input file.
+ *
+ * The demo loads data/linear_system.txt, configures a small simulated HHL
+ * circuit, and prints the postselected solution state.
+ */
 int main() {
     InputHandler input_handler;
     LinearSystem sys = input_handler.load_from_file("data/linear_system.txt");
 
-    int precision = 6;              // Number of clock qubits
-    double evolution_time = 2*pi;   // t0
-    double rotation_const = 0.25;   // C (must be <= smallest eigenvalue)
+    int precision = 6;              ///< Number of clock qubits.
+    double evolution_time = 2*pi;   ///< Hamiltonian evolution time t0.
+    double rotation_const = 0.25;   ///< Rotation constant C.
 
     HHLSolver solver(precision, evolution_time, rotation_const);
 

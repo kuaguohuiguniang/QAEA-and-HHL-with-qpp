@@ -1,22 +1,39 @@
 #pragma once
+/**
+ * @file mean_estimator.hpp
+ * @brief Defines the common interface for mean-estimation backends.
+ */
+
 #include <vector>
 
 namespace nozzle_qns {
 
-    // Output of the *backend* mean estimation for normalized g in [0,1]
+    /**
+     * @brief Output of a backend mean-estimation call for normalized samples.
+     */
     struct MeanEstimate {
-        double G1{}, G2{}, G3{};       // mean of normalized g in [0,1]
-        double eps{};                  // achieved/target error
-        double success_prob{};         // estimator’s own success probability
+        double G1{}, G2{}, G3{}; ///< Estimated means of normalized components in [0, 1].
+        double eps{};            ///< Target or achieved additive error.
+        double success_prob{};   ///< Backend-reported success probability.
     };
 
-    // Quantum (qpp/QAEA) or classical (baseline) backend.
+    /**
+     * @brief Interface for classical or quantum mean-estimation backends.
+     */
     class IMeanEstimator {
         public:
             virtual ~IMeanEstimator() = default;
 
-            // Inputs: normalized samples g_a(u_k) in [0,1] on knots u_k.
-            // Output: estimate of mean(g_a) over the knot set.
+            /**
+             * @brief Estimates means of three normalized sample vectors.
+             *
+             * @param g1 First normalized component samples in [0, 1].
+             * @param g2 Second normalized component samples in [0, 1].
+             * @param g3 Third normalized component samples in [0, 1].
+             * @param eps_target Requested additive error target.
+             * @param delta_target Requested failure-probability target.
+             * @return Component-wise mean estimate and diagnostics.
+             */
             virtual MeanEstimate estimate_mean(
                 const std::vector<double>& g1,
                 const std::vector<double>& g2,

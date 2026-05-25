@@ -1,4 +1,8 @@
 #include "nozzle_qns/steady_state_ic.hpp"
+/**
+ * @file steady_state_ic.cpp
+ * @brief Implements perturbed isentropic steady-state initial conditions.
+ */
 
 #include <algorithm>
 #include <cmath>
@@ -8,6 +12,9 @@
 
 namespace nozzle_qns {
 
+/**
+ * @brief Computes A/A* as a function of Mach number for isentropic flow.
+ */
 static double area_mach_ratio(double M, double gamma) {
     const double g = gamma;
     const double term = (2.0 / (g + 1.0)) * (1.0 + (g - 1.0) * 0.5 * M * M);
@@ -18,10 +25,11 @@ static double area_mach_ratio(double M, double gamma) {
 
 enum class MachBranch { Subsonic, Supersonic };
 
+/**
+ * @brief Solves for Mach number from an area ratio on a selected branch.
+ */
 static double solve_mach_from_area_ratio(double A_over_Astar, double gamma, MachBranch branch) {
-    // Robust bisection on monotone branches:
-    // subsonic: M in (0,1)
-    // supersonic: M in (1, Mmax)
+    /// Robust bisection on monotone subsonic and supersonic branches.
     if (!(A_over_Astar >= 1.0)) {
         A_over_Astar = 1.0;
     }
@@ -38,16 +46,14 @@ static double solve_mach_from_area_ratio(double A_over_Astar, double gamma, Mach
         hi = 1.0 - 1e-10;
     } else {
         lo = 1.0 + 1e-10;
-        hi = 50.0; // large enough for typical nozzle ratios
+        hi = 50.0; ///< Large enough for typical nozzle ratios.
     }
 
-    // Ensure we bracket a root
+    /// Ensure the chosen interval brackets a root.
     double flo = f(lo);
     double fhi = f(hi);
 
-    // On the chosen branch, f(lo) should be positive (area->inf) and f(hi) negative (area->1) for subsonic,
-    // and f(lo) ~ (1 - A/A*) <= 0 and f(hi) positive for supersonic, but due to numeric, just adjust.
-    // We'll expand hi for supersonic if needed.
+    /// Expand the supersonic upper bound if needed.
     if (branch == MachBranch::Supersonic) {
         int expand = 0;
         while (fhi < 0.0 && expand < 30) {
@@ -57,12 +63,12 @@ static double solve_mach_from_area_ratio(double A_over_Astar, double gamma, Mach
         }
     }
 
-    // If still not bracketed, return near-sonic as fallback
+    /// If still not bracketed, return a near-sonic fallback.
     if (flo * fhi > 0.0) {
         return (branch == MachBranch::Subsonic) ? 0.999999 : 1.000001;
     }
 
-    // Bisection
+    /// Bisection solve.
     for (int it = 0; it < 200; ++it) {
         const double mid = 0.5 * (lo + hi);
         const double fmid = f(mid);
@@ -80,11 +86,17 @@ static double solve_mach_from_area_ratio(double A_over_Astar, double gamma, Mach
     return 0.5 * (lo + hi);
 }
 
+/**
+ * @brief Draws a uniform random number from [a, b].
+ */
 static inline double uni(std::mt19937& rng, double a, double b) {
     std::uniform_real_distribution<double> dist(a, b);
     return dist(rng);
 }
 
+/**
+ * @brief Builds an SI-5D-style perturbed steady-state initial condition.
+ */
 std::vector<UVec> make_initial_U_steady_state_SI5D(
     const Grid1D& grid,
     const NozzleArea& area,
@@ -95,7 +107,7 @@ std::vector<UVec> make_initial_U_steady_state_SI5D(
     if (m < 3) throw std::runtime_error("make_initial_U_steady_state_SI5D: grid.m must be >= 3");
     if (!(gas.gamma > 1.0)) throw std::runtime_error("make_initial_U_steady_state_SI5D: gamma must be > 1");
 
-    // Evaluate areas and find throat (A* = min area)
+    /// Evaluate areas and find the throat A* = min A.
     std::vector<double> A(m);
     idx j_throat = 0;
     double Astar = std::numeric_limits<double>::infinity();
@@ -109,7 +121,7 @@ std::vector<UVec> make_initial_U_steady_state_SI5D(
         }
     }
 
-    // Steady isentropic solution (dimensionless):
+    /// Steady isentropic solution in dimensionless variables.
     std::vector<double> M(m), Tss(m), rhoss(m);
 
     const double g = gas.gamma;
@@ -132,14 +144,13 @@ std::vector<UVec> make_initial_U_steady_state_SI5D(
     const double Tssmin  = *std::min_element(Tss.begin(), Tss.end());
     const double rhossmin = *std::min_element(rhoss.begin(), rhoss.end());
 
-    // Compute steady mass flow rate from throat
-    // Using v = M * a, and in their nondimensionalization a = sqrt(T)
+    /// Compute steady mass flow rate from the throat.
     const double Tt = Tss[j_throat];
     const double rhot = rhoss[j_throat];
-    const double vt = std::sqrt(Tt); // matches SI-5D statement
-    const double mdot_ss = rhot * A[j_throat] * vt; // since M=1 at throat
+    const double vt = std::sqrt(Tt); ///< Matches the SI-5D nondimensional sound speed.
+    const double mdot_ss = rhot * A[j_throat] * vt; ///< M = 1 at the throat.
 
-    // Random shifts
+    /// Random shifts around the steady solution.
     const double dTmax   = (cfg.shock_present ? 0.01 : 0.02) * Tssmin;
     const double drhomax = (cfg.shock_present ? 0.02 : 0.10) * rhossmin;
     const double dmdotmax = 0.01 * mdot_ss;
@@ -160,24 +171,24 @@ std::vector<UVec> make_initial_U_steady_state_SI5D(
     const double dmdot = uni(rng, -dmdotmax, dmdotmax);
     const double mdot_init = mdot_ss + dmdot;
 
-    // Build U from rho_init, T_init, mdot_init
+    /// Build conservative U from rho_init, T_init, and mdot_init.
     std::vector<UVec> U(m);
     for (idx j = 0; j < m; ++j) {
-        const double v = mdot_init / (rhoinit[j] * A[j]); // from mdot = rho A v
+        const double v = mdot_init / (rhoinit[j] * A[j]); ///< From mdot = rho * A * v.
 
         U[j].U1 = rhoinit[j] * A[j];
-        U[j].U2 = rhoinit[j] * A[j] * v; // equals mdot_init (up to rounding)
+        U[j].U2 = rhoinit[j] * A[j] * v; ///< Equals mdot_init up to rounding.
 
-        // U3 = rho A ( T/(g-1) + g/2 v^2 )
+        /// U3 = rho * A * (T / (g - 1) + g / 2 * v^2).
         U[j].U3 = rhoinit[j] * A[j] * (Tinit[j] / (g - 1.0) + (g * 0.5) * v * v);
     }
 
-    // Enforce U2 constant (exact mdot_init)
+    /// Enforce U2 as the constant mass flow mdot_init.
     if (cfg.enforce_constant_mdot) {
         for (idx j = 0; j < m; ++j) {
             U[j].U2 = mdot_init;
         }
-        // Update U3 consistently with adjusted U2 (recompute v)
+        /// Update U3 consistently with adjusted U2 by recomputing v.
         for (idx j = 0; j < m; ++j) {
             const double rho = U[j].U1 / A[j];
             const double v = U[j].U2 / U[j].U1;

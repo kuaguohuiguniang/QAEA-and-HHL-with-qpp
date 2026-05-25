@@ -1,6 +1,9 @@
 #include "HHLinput.hpp"
 #include <fstream>
 
+/**
+ * @brief Computes the maximum row sparsity of the current matrix A.
+ */
 void LinearSystem::set_sparsity() {
     d = 0;
     for (int i = 0; i < N; ++i) {
@@ -16,6 +19,12 @@ void LinearSystem::set_sparsity() {
     }
 }
 
+/**
+ * @brief Loads, validates, and returns a linear system from a text file.
+ *
+ * The expected file format is the dimension N, followed by N x N complex
+ * matrix entries and then N complex vector entries.
+ */
 LinearSystem InputHandler::load_from_file(std::string filename) {
     LinearSystem sys;
     std::ifstream infile(filename);
@@ -31,7 +40,7 @@ LinearSystem InputHandler::load_from_file(std::string filename) {
         char skip = 0;
         for (int i = 0; i < sys.N; ++i) {
             for (int j = 0; j < sys.N; ++j) {
-                infile >> re >> im >> skip; // Skip the comma and ;
+                infile >> re >> im >> skip; ///< Skip the matrix-entry separator.
                 sys.A(i, j) = std::complex<double>(re, im);
             }
         }
@@ -46,9 +55,11 @@ LinearSystem InputHandler::load_from_file(std::string filename) {
     return sys;
 }
 
+/**
+ * @brief Validates Hermiticity, scales A and b, and normalizes b.
+ */
 void InputHandler::validate_system(LinearSystem& sys) {
-    // Calculate the norm of (A - A^dagger) to check if A is Hermitian
-    // If not, construct C = (0 A; A^dagger 0) and update b accordingly
+    /// Check Hermiticity with ||A - A^dagger|| and embed non-Hermitian A.
     double diff = qpp::norm(sys.A - qpp::adjoint(sys.A));
     if (diff > LinearSystem::tol) {
         std::cout << "A is not Hermitian. Using C=(0, A; A^dagger, 0) instead." << std::endl;
@@ -61,14 +72,13 @@ void InputHandler::validate_system(LinearSystem& sys) {
         sys.b = b_new;
         sys.N = 2 * sys.N;
     }
-    // Normalize/scale A so that ||A|| <= 1
-    // Simple safe bound: Frobenius norm
-    double alpha = sys.A.norm(); // Frobenius norm in Eigen
+    /// Scale A with its Frobenius norm so ||A||_2 <= ||A||_F <= 1 after scaling.
+    double alpha = sys.A.norm(); ///< Frobenius norm computed by Eigen.
     if (alpha < LinearSystem::tol) {
         throw std::runtime_error("Error: Input matrix A is zero.");
     }
 
-    // Scale both A and b to keep Ax=b equivalent
+    /// Scale both A and b to keep Ax=b equivalent.
     sys.A /= alpha;
     sys.b /= alpha;
     sys.A_scale = alpha;

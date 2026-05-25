@@ -1,3 +1,8 @@
+/**
+ * @file nozzle.cpp
+ * @brief Example executable for comparing classical and QAEA nozzle backends.
+ */
+
 #include "nozzle_qns/nozzle_app.hpp"
 #include "nozzle_qns/knot_policy.hpp"
 #include "nozzle_qns/classical_mean_estimator.hpp"
@@ -12,6 +17,9 @@ using nozzle_qns::idx;
 
 namespace {
 
+/**
+ * @brief Prints representative primitive variables from a nozzle solution.
+ */
 void print_summary(const nozzle_qns::Solution& sol,
                    const nozzle_qns::Grid1D& grid,
                    const nozzle_qns::NozzleArea& area,
@@ -29,8 +37,7 @@ void print_summary(const nozzle_qns::Solution& sol,
 
     auto prim_mid = nozzle_qns::to_primitive(sol.U_final[j_mid], area(grid.x(j_mid)), gas);
 
-    // Mass flow estimate (should be ~ constant for quasi-1D steady-ish): mdot = rho * v * A
-    // Here using primitive: rho, v, A
+    /// Mass-flow estimate: mdot = rho * v * A.
     const double mdot_mid = prim_mid.rho * prim_mid.v * area(grid.x(j_mid));
 
     std::cout << "Grid points m = " << m << "\n";
@@ -42,7 +49,7 @@ void print_summary(const nozzle_qns::Solution& sol,
               << ", p=" << prim_mid.p << "\n";
     std::cout << "mdot@mid = " << mdot_mid << "\n";
 
-    // Also print inlet/outlet primitive (rough sanity)
+    /// Print inlet and outlet primitive variables as a rough sanity check.
     auto prim_in  = nozzle_qns::to_primitive(sol.U_final[0],       area(grid.x(0)),       gas);
     auto prim_out = nozzle_qns::to_primitive(sol.U_final[m - 1],   area(grid.x(m - 1)),   gas);
 
@@ -57,36 +64,38 @@ void print_summary(const nozzle_qns::Solution& sol,
 
 }
 
+/**
+ * @brief Builds a small demonstration configuration for the nozzle solver.
+ */
 nozzle_qns::NozzleConfig make_small_test_config() {
     nozzle_qns::NozzleConfig cfg;
 
-    // Domain and grid
+    /// Domain and grid.
     cfg.x0 = 0.0;
     cfg.x1 = 3.0;
-    cfg.Ngrid = 31; // keep moderate
+    cfg.Ngrid = 31; ///< Keep moderate for the demonstration run.
 
-    // Geometry: use the paper default nozzle
+    /// Geometry: use the paper default nozzle.
     cfg.area_preset = nozzle_qns::NozzleAreaPreset::PaperDefault;
 
-    // Gas
+    /// Gas model.
     cfg.gas = nozzle_qns::GasModel{1.4};
 
-    // Boundary conditions (paper uses supersonic outflow in the shock-free case)
+    /// Boundary conditions for the shock-free case.
     cfg.bc.exit_type = nozzle_qns::ExitType::SupersonicOutflow;
-    cfg.bc.pe = 0.6784; // used only if SubsonicOutflow
+    cfg.bc.pe = 0.6784; ///< Used only if SubsonicOutflow is selected.
 
-    // Time/algorithm parameters
-    // Keep it small for a quick run; increase once validated.
-    cfg.stepper_cfg.tp.n = 4;           // number of outer intervals
-    cfg.stepper_cfg.tp.k = 1;           // hierarchy depth
-    cfg.stepper_cfg.tp.Tfinal = 0.2;    // final time (dimensionless)
+    /// Time and algorithm parameters for a small demonstration run.
+    cfg.stepper_cfg.tp.n = 4;        ///< Number of outer intervals.
+    cfg.stepper_cfg.tp.k = 1;        ///< Hierarchy depth.
+    cfg.stepper_cfg.tp.Tfinal = 0.2; ///< Final dimensionless time.
 
-    cfg.stepper_cfg.knots_per_subsub = 8; // N for mean estimation (pad to 2^n anyway)
+    cfg.stepper_cfg.knots_per_subsub = 8; ///< Number of mean-estimation knots.
 
     cfg.stepper_cfg.eps1 = 1e-2;
     cfg.stepper_cfg.delta = 1e-3;
 
-    // Taylor order in current code can only be 1
+    /// Taylor order in current code can only be 1.
     cfg.stepper_cfg.taylor.r = 1;
 
     return cfg;
@@ -94,9 +103,12 @@ nozzle_qns::NozzleConfig make_small_test_config() {
 
 } // namespace
 
+/**
+ * @brief Runs the classical and QAEA nozzle examples.
+ */
 int main() {
     try {
-        // ---- Common config ----
+        /// Common configuration shared by both backends.
         nozzle_qns::NozzleConfig cfg = make_small_test_config();
         nozzle_qns::NozzleRunner runner(cfg);
 
@@ -104,10 +116,10 @@ int main() {
         const auto area = runner.make_area();
         const auto gas  = cfg.gas;
 
-        // Knot policy (uniform knots in u ∈ [0,1])
+        /// Knot policy: uniform knots in u in [0, 1].
         nozzle_qns::UniformKnotPolicy knot_policy;
 
-        // 1. Classical backend (baseline)
+        /// Classical backend baseline.
 
         {
             nozzle_qns::ClassicalMeanEstimator classical_backend;
@@ -117,12 +129,11 @@ int main() {
         }
 
 
-        // 2. Quantum backend (QppMeanEstimator/QAEA)
-
-        // NOTE: This can be *slow* depending on knots_per_subsub (N) and eps.
+        /// QppMeanEstimator backend using QAEA-style simulation.
+        /// This can be slow depending on knots_per_subsub and eps.
         {
             nozzle_qns::QppMeanEstimator::Options opt;
-            opt.index_qubits = 0;        // auto from knot count
+            opt.index_qubits = 0;        ///< Auto-select from knot count.
             opt.default_eps = 1e-3;
             opt.default_delta = 1e-3;
             opt.seed = 12345;

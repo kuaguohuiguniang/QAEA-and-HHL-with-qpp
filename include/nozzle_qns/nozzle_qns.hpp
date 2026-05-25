@@ -1,6 +1,8 @@
 #pragma once
-
-// Umbrella header: include the main public API for the nozzle project.
+/**
+ * @file nozzle_qns.hpp
+ * @brief Umbrella header for the nozzle QNS public API.
+ */
 
 #include "nozzle_qns/nozzle_types.hpp"
 #include "nozzle_qns/nozzle_geometry.hpp"

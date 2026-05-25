@@ -1,7 +1,14 @@
 #include "nozzle_qns/nozzle_app.hpp"
+/**
+ * @file nozzle_app.cpp
+ * @brief Implements high-level nozzle runner construction and execution.
+ */
 
 namespace nozzle_qns {
 
+    /**
+     * @brief Builds a simple rest-state initial condition over the nozzle grid.
+     */
     std::vector<UVec> NozzleRunner::initial_U_simple() const {
         const Grid1D grid = make_grid();
         const NozzleArea area = make_area();
@@ -10,12 +17,7 @@ namespace nozzle_qns {
         ensure(grid.m >= 3, "NozzleRunner::initial_U: grid must have >= 3 points");
         ensure(gamma > 1.0, "NozzleRunner::initial_U: gamma must be > 1");
 
-        // Simple IC (dimensionless):
-        // rho = 1, T = 1 everywhere; v = 0 everywhere.
-        // Then:
-        // U1 = rho*A = A
-        // U2 = rho*A*v = 0
-        // U3 = rho*A*(T/(gamma-1) + gamma/2*v^2) = A/(gamma-1)
+        /// Simple dimensionless IC: rho = 1, T = 1, and v = 0 everywhere.
         std::vector<UVec> U0(grid.m);
         for (idx j = 0; j < grid.m; ++j) {
             const double A = area(grid.x(j));
@@ -26,12 +28,15 @@ namespace nozzle_qns {
             U0[j].U3 = A / (gamma - 1.0);
         }
 
-        // Enforce BCs once so boundary cells are consistent with your chosen BC policy.
+        /// Enforce BCs once so boundary cells match the selected policy.
         BoundaryApplier bc(grid, area, cfg_.gas, cfg_.bc);
         bc.apply(U0);
         return U0;
     }
 
+    /**
+     * @brief Builds the default perturbed steady-state initial condition.
+     */
     std::vector<UVec> NozzleRunner::initial_U() const {
         const Grid1D grid = make_grid();
         const NozzleArea area = make_area();
@@ -49,16 +54,19 @@ namespace nozzle_qns {
         return U0;
     }
 
+    /**
+     * @brief Builds the full nozzle pipeline and solves with a chosen estimator backend.
+     */
     Solution NozzleRunner::run(IMeanEstimator& estimator_backend,
                         const IKnotPolicy& knot_policy) const{
-        // Build core problem objects from config
+        /// Build core problem objects from the configuration.
         Quasi1DInviscidDriver driver = make_driver();
         BoundaryApplier bc = make_bc();
 
-        // Bridge from classical knot samples -> (optional quantum) mean estimation
+        /// Bridge from classical knot samples to the selected mean estimator.
         MeanIntegralComputer mean_integrals(estimator_backend);
 
-        // Stepper and solver
+        /// Stepper and solver.
         OneIntervalStepper stepper(cfg_.stepper_cfg,
                                 std::move(driver),
                                 std::move(bc),
@@ -67,7 +75,7 @@ namespace nozzle_qns {
 
         QuantumODESolver solver(std::move(stepper));
 
-        // Initial state and run
+        /// Initial state and run.
         std::vector<UVec> U0 = initial_U();
         return solver.solve(std::move(U0));
     }
